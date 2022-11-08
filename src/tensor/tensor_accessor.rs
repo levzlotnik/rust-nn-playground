@@ -1,51 +1,46 @@
 use std::ops::{Range, RangeFrom, RangeTo, RangeFull, Index, IndexMut};
 
-use num_traits::Num;
+use super::Dtype;
+use super::tensor_trait::TensorTrait;
 
-/// A trait for any eligible data type for tensors.
-pub trait Dtype: Num {
-    fn cast<To: Num + From<Self>>(self) -> To {
-        To::from(self)
-    }
-}
 
-trait MultiIndexBundleBase<'a> {
-    type ScalarSlice;
-    type RangeSlice;
+pub trait MultiIndexBundleBase<T: Dtype> {
+    type ScalarSlice: TensorTrait<T>;
+    type RangeSlice: TensorTrait<T>;
 }
 
 
-trait TensorAccessor<'a, T: Dtype, MultiIndexBundle: MultiIndexBundleBase<'a>>
+pub trait TensorAccessor<T: Dtype>
 {
+    type MultiIndexBundle: MultiIndexBundleBase<T>;
+
     /// Enables accessing a slice of the tensor with a scalar
-    fn index_scalar(&self, pos: i64) -> &'a MultiIndexBundle::ScalarSlice;
+    fn index_scalar<'a>(&'a self, pos: i64) -> &'a <Self::MultiIndexBundle as MultiIndexBundleBase<T>>::ScalarSlice;
 
     /// Enables accessing a mutable slice of the tensor with a scalar
-    fn index_scalar_mut(&mut self, pos: i64) -> &'a mut MultiIndexBundle::ScalarSlice;
+    fn index_scalar_mut<'a>(&'a mut self, pos: i64) -> &'a mut <Self::MultiIndexBundle as MultiIndexBundleBase<T>>::ScalarSlice;
 
     /// Enables accessing a slice of the tensor with a range
-    fn index_range(&self, range: Range<i64>) -> &'a MultiIndexBundle::RangeSlice;
+    fn index_range<'a>(&'a self, range: Range<i64>) -> &'a <Self::MultiIndexBundle as MultiIndexBundleBase<T>>::RangeSlice;
 
     /// Enables accessing a mutable slice of the tensor with a range
-    fn index_range_mut(&mut self, range: Range<i64>) -> &'a mut MultiIndexBundle::RangeSlice;
+    fn index_range_mut<'a>(&'a mut self, range: Range<i64>) -> &'a mut <Self::MultiIndexBundle as MultiIndexBundleBase<T>>::RangeSlice;
 
     fn get_dim_size(&self) -> i64;
 } 
 
-impl<'a, T: Dtype, MultiIndexBundle> Index<i64> for dyn TensorAccessor<'a, T, MultiIndexBundle> 
-    where MultiIndexBundle: MultiIndexBundleBase<'a>
+impl<T: Dtype, TA: TensorAccessor<T>> Index<i64> for TA 
 {
-    type Output = MultiIndexBundle::ScalarSlice;
+    type Output = <TA::MultiIndexBundle as MultiIndexBundleBase<T>>::ScalarSlice;
 
-    fn index(&self, index: i64) -> &'a Self::Output {
+    fn index<'a>(&'a self, index: i64) -> &'a Self::Output {
         &*self.index_scalar(index)
     }
 }
 
-impl<'a, T: Dtype, MultiIndexBundle> IndexMut<i64> for dyn TensorAccessor<'a, T, MultiIndexBundle> 
-    where MultiIndexBundle: MultiIndexBundleBase<'a>
+impl<T: Dtype, TA:TensorAccessor<T>> IndexMut<i64> for TA
 {
-    fn index_mut(&mut self, index: i64) -> &'a mut Self::Output {
+    fn index_mut<'a>(&'a mut self, index: i64) -> &'a mut Self::Output {
         &mut *self.index_scalar_mut(index)
     }
 }
@@ -64,32 +59,30 @@ fn normalize_range(range: Range<i64>, size: i64) -> Range<i64> {
     Range {start, end}
 }
 
-impl<'a, T: Dtype, MultiIndexBundle> Index<Range<i64>> for dyn TensorAccessor<'a, T, MultiIndexBundle> 
-    where MultiIndexBundle: MultiIndexBundleBase<'a>
+impl<T: Dtype, TA:TensorAccessor<T>> Index<Range<i64>> for TA
 {
-    type Output = MultiIndexBundle::RangeSlice;
+    type Output = <TA::MultiIndexBundle as MultiIndexBundleBase<T>>::RangeSlice;
 
-    fn index(&self, index: Range<i64>) -> &'a Self::Output {
+    fn index<'a>(&'a self, index: Range<i64>) -> &'a Self::Output {
         let index = normalize_range(index, self.get_dim_size());
         &*self.index_range(index)
     }
 }
 
-impl<'a, T: Dtype, MultiIndexBundle> IndexMut<Range<i64>> for dyn TensorAccessor<'a, T, MultiIndexBundle> 
-    where MultiIndexBundle: MultiIndexBundleBase<'a>
+impl<T: Dtype, TA> IndexMut<Range<i64>> for TA
+    where TA: TensorAccessor<T>,
 {
-    fn index_mut(&mut self, index: Range<i64>) -> &'a mut Self::Output {
+    fn index_mut<'a>(&'a mut self, index: Range<i64>) -> &'a mut Self::Output {
         let index = normalize_range(index, self.get_dim_size());
         &mut *self.index_range_mut(index)
     }
 }
 
-impl<'a, T: Dtype, MultiIndexBundle> Index<RangeFrom<i64>> for dyn TensorAccessor<'a, T, MultiIndexBundle> 
-    where MultiIndexBundle: MultiIndexBundleBase<'a>
+impl<T: Dtype, TA: TensorAccessor<T>> Index<RangeFrom<i64>> for TA
 {
-    type Output = MultiIndexBundle::RangeSlice;
+    type Output = <TA::MultiIndexBundle as MultiIndexBundleBase<T>>::RangeSlice;
 
-    fn index(&self, index: RangeFrom<i64>) -> &'a Self::Output {
+    fn index<'a>(&'a self, index: RangeFrom<i64>) -> &'a Self::Output {
         let index = Range {
             start: index.start,
             end: self.get_dim_size()
@@ -99,10 +92,9 @@ impl<'a, T: Dtype, MultiIndexBundle> Index<RangeFrom<i64>> for dyn TensorAccesso
     }
 }
 
-impl<'a, T: Dtype, MultiIndexBundle> IndexMut<RangeFrom<i64>> for dyn TensorAccessor<'a, T, MultiIndexBundle> 
-    where MultiIndexBundle: MultiIndexBundleBase<'a>
+impl<T: Dtype, TA: TensorAccessor<T>> IndexMut<RangeFrom<i64>> for TA
 {
-    fn index_mut(&mut self, index: RangeFrom<i64>) -> &'a mut Self::Output {
+    fn index_mut<'a>(&'a mut self, index: RangeFrom<i64>) -> &'a mut Self::Output {
         let index = Range {
             start: index.start,
             end: self.get_dim_size()
@@ -113,12 +105,11 @@ impl<'a, T: Dtype, MultiIndexBundle> IndexMut<RangeFrom<i64>> for dyn TensorAcce
 }
 
 
-impl<'a, T: Dtype, MultiIndexBundle> Index<RangeTo<i64>> for dyn TensorAccessor<'a, T, MultiIndexBundle> 
-    where MultiIndexBundle: MultiIndexBundleBase<'a>
+impl<T: Dtype, TA: TensorAccessor<T>> Index<RangeTo<i64>> for TA
 {
-    type Output = MultiIndexBundle::RangeSlice;
+    type Output = <TA::MultiIndexBundle as MultiIndexBundleBase<T>>::RangeSlice;
 
-    fn index(&self, index: RangeTo<i64>) -> &'a Self::Output {
+    fn index<'a>(&'a self, index: RangeTo<i64>) -> &'a Self::Output {
         let index = Range {
             start: 0,
             end: index.end
@@ -128,10 +119,9 @@ impl<'a, T: Dtype, MultiIndexBundle> Index<RangeTo<i64>> for dyn TensorAccessor<
     }
 }
 
-impl<'a, T: Dtype, MultiIndexBundle> IndexMut<RangeTo<i64>> for dyn TensorAccessor<'a, T, MultiIndexBundle> 
-    where MultiIndexBundle: MultiIndexBundleBase<'a>
+impl<T: Dtype, TA: TensorAccessor<T>> IndexMut<RangeTo<i64>> for TA
 {
-    fn index_mut(&mut self, index: RangeTo<i64>) -> &'a mut Self::Output {
+    fn index_mut<'a>(&'a mut self, index: RangeTo<i64>) -> &'a mut Self::Output {
         let index = Range {
             start: 0,
             end: index.end
@@ -142,12 +132,11 @@ impl<'a, T: Dtype, MultiIndexBundle> IndexMut<RangeTo<i64>> for dyn TensorAccess
 }
 
 
-impl<'a, T: Dtype, MultiIndexBundle> Index<RangeFull> for dyn TensorAccessor<'a, T, MultiIndexBundle> 
-    where MultiIndexBundle: MultiIndexBundleBase<'a>
+impl<T: Dtype, TA: TensorAccessor<T>> Index<RangeFull> for TA
 {
-    type Output = MultiIndexBundle::RangeSlice;
+    type Output = <TA::MultiIndexBundle as MultiIndexBundleBase<T>>::RangeSlice;
 
-    fn index(&self, _: RangeFull) -> &'a Self::Output {
+    fn index<'a>(&'a self, _: RangeFull) -> &'a Self::Output {
         let index = Range {
             start: 0,
             end: self.get_dim_size()
@@ -156,10 +145,9 @@ impl<'a, T: Dtype, MultiIndexBundle> Index<RangeFull> for dyn TensorAccessor<'a,
     }
 }
 
-impl<'a, T: Dtype, MultiIndexBundle> IndexMut<RangeFull> for dyn TensorAccessor<'a, T, MultiIndexBundle> 
-    where MultiIndexBundle: MultiIndexBundleBase<'a>
+impl<T: Dtype, TA: TensorAccessor<T>> IndexMut<RangeFull> for TA
 {
-    fn index_mut(&mut self, _: RangeFull) -> &'a mut Self::Output {
+    fn index_mut<'a>(&'a mut self, _: RangeFull) -> &'a mut Self::Output {
         let index = Range {
             start: 0,
             end: self.get_dim_size()
